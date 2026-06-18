@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tic Tac Toe</title>
+    <title>Tic Tac Toe vs Bot</title>
     <style>
         /* CSS Variables for easy theming */
         :root {
@@ -48,6 +48,12 @@
             letter-spacing: 2px;
         }
 
+        .subtitle {
+            font-size: 0.9rem;
+            opacity: 0.8;
+            margin-bottom: 10px;
+        }
+
         /* Status Display */
         .status {
             font-size: 1.2rem;
@@ -55,10 +61,6 @@
             min-height: 1.5em;
             font-weight: bold;
             text-align: center;
-        }
-
-        .current-player {
-            color: var(--o-color);
         }
 
         /* Game Board Grid */
@@ -70,6 +72,17 @@
             padding: 15px;
             border-radius: var(--border-radius);
             box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            position: relative;
+        }
+
+        /* Overlay to prevent clicking while bot thinks */
+        .board-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: transparent;
+            z-index: 10;
+            display: none; /* Hidden by default */
+            cursor: wait;
         }
 
         .cell {
@@ -88,23 +101,13 @@
             transition: background-color 0.2s, transform 0.1s;
         }
 
-        /* Interactive states */
         .cell:hover:not(:disabled) {
             background-color: var(--cell-hover);
         }
 
-        .cell:active:not(:disabled) {
-            transform: scale(0.95);
-        }
-
         /* Specific colors for X and O */
-        .cell.x {
-            color: var(--x-color);
-        }
-
-        .cell.o {
-            color: var(--o-color);
-        }
+        .cell.x { color: var(--x-color); }
+        .cell.o { color: var(--o-color); }
 
         /* Winning cells highlight */
         .cell.win {
@@ -129,21 +132,12 @@
             box-shadow: 0 4px 15px rgba(233, 69, 96, 0.4);
         }
 
-        .restart-btn:hover {
-            opacity: 0.9;
-        }
-
-        .restart-btn:active {
-            transform: scale(0.95);
-        }
+        .restart-btn:hover { opacity: 0.9; }
+        .restart-btn:active { transform: scale(0.95); }
 
         /* Responsive Design */
         @media (max-width: 400px) {
-            .cell {
-                width: 80px;
-                height: 80px;
-                font-size: 2.5rem;
-            }
+            .cell { width: 80px; height: 80px; font-size: 2.5rem; }
         }
     </style>
 </head>
@@ -151,21 +145,23 @@
 
     <header>
         <h1>Tic Tac Toe</h1>
+        <div class="subtitle">Player (X) vs Smart Bot (O)</div>
     </header>
 
     <main>
-        <div class="status" id="statusMessage">Player <span class="current-player">X</span>'s turn</div>
+        <div class="status" id="statusMessage">Your Turn (X)</div>
 
         <div class="game-board" id="board">
-            <button class="cell" data-index="0" aria-label="Cell 0"></button>
-            <button class="cell" data-index="1" aria-label="Cell 1"></button>
-            <button class="cell" data-index="2" aria-label="Cell 2"></button>
-            <button class="cell" data-index="3" aria-label="Cell 3"></button>
-            <button class="cell" data-index="4" aria-label="Cell 4"></button>
-            <button class="cell" data-index="5" aria-label="Cell 5"></button>
-            <button class="cell" data-index="6" aria-label="Cell 6"></button>
-            <button class="cell" data-index="7" aria-label="Cell 7"></button>
-            <button class="cell" data-index="8" aria-label="Cell 8"></button>
+            <div class="board-overlay" id="boardOverlay"></div>
+            <button class="cell" data-index="0"></button>
+            <button class="cell" data-index="1"></button>
+            <button class="cell" data-index="2"></button>
+            <button class="cell" data-index="3"></button>
+            <button class="cell" data-index="4"></button>
+            <button class="cell" data-index="5"></button>
+            <button class="cell" data-index="6"></button>
+            <button class="cell" data-index="7"></button>
+            <button class="cell" data-index="8"></button>
         </div>
 
         <div class="controls">
@@ -175,80 +171,36 @@
 
     <script>
         /**
-         * TIC TAC TOE GAME LOGIC WITH AUTO-SELECT BOT
+         * TIC TAC TOE VS BOT (Minimax Algorithm)
          */
 
         // State Variables
-        let gameState = ["", "", "", "", "", "", "", "", ""]; 
-        let currentPlayer = "X"; 
-        let isGameActive = true; 
+        let gameState = ["", "", "", "", "", "", "", "", ""];
+        let isGameActive = true;
+        
+        // Player is always X, Bot is always O
+        const HUMAN = 'X';
+        const BOT = 'O';
 
         // DOM Elements
         const statusDisplay = document.getElementById('statusMessage');
         const cells = document.querySelectorAll('.cell');
         const restartBtn = document.getElementById('restartBtn');
+        const boardOverlay = document.getElementById('boardOverlay');
 
         // Winning Combinations
         const winningConditions = [
-            [0, 1, 2], [3, 4, 5], [6, 7, 8], // Rows
-            [0, 3, 6], [1, 4, 7], [2, 5, 8], // Columns
-            [0, 4, 8], [2, 4, 6]             // Diagonals
+            [0, 1, 2], [3, 4, 5], [6, 7, 8],
+            [0, 3, 6], [1, 4, 7], [2, 5, 8],
+            [0, 4, 8], [2, 4, 6]
         ];
 
-        // Messages
-        const winningMessage = () => `Player <span class="current-player" style="color: ${currentPlayer === 'X' ? 'var(--x-color)' : 'var(--o-color)'}">${currentPlayer}</span> has won!`;
-        const drawMessage = () => `Game ended in a draw!`;
-        const currentPlayerTurn = () => `Player <span class="current-player" style="color: ${currentPlayer === 'X' ? 'var(--x-color)' : 'var(--o-color)'}">${currentPlayer}</span>'s turn`;
+        // --- GAME LOGIC ---
 
-        statusDisplay.innerHTML = currentPlayerTurn();
-
-        function handleCellPlayed(clickedCell, clickedCellIndex) {
-            gameState[clickedCellIndex] = currentPlayer;
-            clickedCell.innerText = currentPlayer;
-            clickedCell.classList.add(currentPlayer.toLowerCase());
-        }
-
-        function handlePlayerChange() {
-            currentPlayer = currentPlayer === "X" ? "O" : "X";
-            statusDisplay.innerHTML = currentPlayerTurn();
-
-            // 👉 IF IT IS PLAYER O's TURN, THE BOT PLAYS AUTOMATICALLY
-            if (currentPlayer === "O" && isGameActive) {
-                // Temporarily disable board while bot thinks slightly (looks realistic)
-                cells.forEach(cell => cell.disabled = true);
-                setTimeout(makeBotMove, 500); 
-            }
-        }
-
-        /**
-         * 🤖 Auto-Select Bot Logic
-         */
-        function makeBotMove() {
-            if (!isGameActive) return;
-
-            // 1. Find all available empty indexes
-            let availableCells = [];
-            gameState.forEach((cell, index) => {
-                if (cell === "") {
-                    availableCells.push(index);
-                }
-            });
-
-            // 2. If spots exist, pick a random index
-            if (availableCells.length > 0) {
-                const randomIndex = availableCells[Math.floor(Math.random() * availableCells.length)];
-                const targetCell = cells[randomIndex];
-
-                // 3. Play the Bot's move
-                handleCellPlayed(targetCell, randomIndex);
-                
-                // Re-enable remaining empty cells for the human player
-                cells.forEach((cell, idx) => {
-                    if (gameState[idx] === "") cell.disabled = false;
-                });
-
-                handleResultValidation();
-            }
+        function handleCellPlayed(clickedCell, clickedCellIndex, player) {
+            gameState[clickedCellIndex] = player;
+            clickedCell.innerText = player;
+            clickedCell.classList.add(player.toLowerCase());
         }
 
         function handleResultValidation() {
@@ -262,7 +214,6 @@
                 let c = gameState[winCondition[2]];
 
                 if (a === '' || b === '' || c === '') continue;
-
                 if (a === b && b === c) {
                     roundWon = true;
                     winningLine = winCondition;
@@ -271,55 +222,165 @@
             }
 
             if (roundWon) {
-                statusDisplay.innerHTML = winningMessage();
-                isGameActive = false;
-                highlightWinningCells(winningLine);
+                // Determine who won based on the last move (simply checking current state)
+                // Since we check after every move, we look at the winning line content
+                const winner = gameState[winningLine[0]];
+                announceWinner(winner, winningLine);
                 return;
             }
 
             let roundDraw = !gameState.includes("");
             if (roundDraw) {
-                statusDisplay.innerHTML = drawMessage();
+                statusDisplay.innerText = "Game ended in a Draw!";
                 isGameActive = false;
+                boardOverlay.style.display = 'none';
                 return;
             }
-
-            handlePlayerChange();
         }
 
-        function highlightWinningCells(indices) {
-            indices.forEach(index => cells[index].classList.add('win'));
-            cells.forEach(cell => cell.disabled = true);
+        function announceWinner(winner, line) {
+            isGameActive = false;
+            statusDisplay.innerHTML = winner === HUMAN 
+                ? `<span style="color:var(--x-color)">You Won!</span>` 
+                : `<span style="color:var(--o-color)">Bot Won!</span>`;
+            
+            // Highlight winning cells
+            line.forEach(index => cells[index].classList.add('win'));
+            boardOverlay.style.display = 'none';
         }
+
+        // --- BOT LOGIC (MINIMAX) ---
+
+        function handleBotTurn() {
+            if (!isGameActive) return;
+
+            // 1. Lock the board so user can't click while bot "thinks"
+            boardOverlay.style.display = 'block';
+            statusDisplay.innerText = "Bot is thinking...";
+
+            // 2. Delay slightly for realism
+            setTimeout(() => {
+                const bestMoveIndex = minimax(gameState, BOT).index;
+                
+                const cell = document.querySelector(`[data-index='${bestMoveIndex}']`);
+                handleCellPlayed(cell, bestMoveIndex, BOT);
+                handleResultValidation();
+
+                // 3. Unlock board if game is still active
+                if(isGameActive) {
+                    statusDisplay.innerText = "Your Turn (X)";
+                    boardOverlay.style.display = 'none';
+                }
+            }, 600); // 600ms delay
+        }
+
+        // Minimax Algorithm - The Brain of the Bot
+        function minimax(newBoard, player) {
+            // Find indices of available spots
+            const availSpots = newBoard.map((val, idx) => val === "" ? idx : null).filter(val => val !== null);
+
+            // Checks for terminal states (Win/Loss/Draw)
+            if (checkWin(newBoard, HUMAN)) return { score: -10 };
+            if (checkWin(newBoard, BOT)) return { score: 10 };
+            if (availSpots.length === 0) return { score: 0 };
+
+            // Array to collect moves and their scores
+            const moves = [];
+
+            // Loop through available spots
+            for (let i = 0; i < availSpots.length; i++) {
+                const move = {};
+                move.index = availSpots[i];
+
+                // Make the move on the temp board
+                newBoard[availSpots[i]] = player;
+
+                // Recursive call: Minimax for the opposite player
+                if (player === BOT) {
+                    const result = minimax(newBoard, HUMAN);
+                    move.score = result.score;
+                } else {
+                    const result = minimax(newBoard, BOT);
+                    move.score = result.score;
+                }
+
+                // Undo the move (backtrack)
+                newBoard[availSpots[i]] = "";
+
+                moves.push(move);
+            }
+
+            // Choose best move
+            let bestMove;
+            if (player === BOT) {
+                // Bot wants highest score (10)
+                let bestScore = -10000;
+                for (let i = 0; i < moves.length; i++) {
+                    if (moves[i].score > bestScore) {
+                        bestScore = moves[i].score;
+                        bestMove = i;
+                    }
+                }
+            } else {
+                // Human wants lowest score (-10)
+                let bestScore = 10000;
+                for (let i = 0; i < moves.length; i++) {
+                    if (moves[i].score < bestScore) {
+                        bestScore = moves[i].score;
+                        bestMove = i;
+                    }
+                }
+            }
+
+            return moves[bestMove];
+        }
+
+        // Helper to check win state purely for Minimax logic
+        function checkWin(board, player) {
+            return winningConditions.some(combination => {
+                return combination.every(index => {
+                    return board[index] === player;
+                });
+            });
+        }
+
+        // --- EVENT HANDLERS ---
 
         function handleCellClick(clickedCellEvent) {
             const clickedCell = clickedCellEvent.target;
             const clickedCellIndex = parseInt(clickedCell.getAttribute('data-index'));
 
-            // Prevent clicking if cell is full, game is over, or if it's the Bot's turn (O)
-            if (gameState[clickedCellIndex] !== "" || !isGameActive || currentPlayer === "O") {
+            // Validation: cell empty? game active? is it player's turn?
+            if (gameState[clickedCellIndex] !== "" || !isGameActive || boardOverlay.style.display === 'block') {
                 return;
             }
 
-            handleCellPlayed(clickedCell, clickedCellIndex);
+            // 1. Player Move
+            handleCellPlayed(clickedCell, clickedCellIndex, HUMAN);
             handleResultValidation();
+
+            // 2. If game continues, trigger Bot
+            if (isGameActive) {
+                handleBotTurn();
+            }
         }
 
         function handleRestartGame() {
             isGameActive = true;
-            currentPlayer = "X";
             gameState = ["", "", "", "", "", "", "", "", ""];
-            statusDisplay.innerHTML = currentPlayerTurn();
+            statusDisplay.innerText = "Your Turn (X)";
+            boardOverlay.style.display = 'none';
             
             cells.forEach(cell => {
                 cell.innerText = "";
                 cell.classList.remove('x', 'o', 'win');
-                cell.disabled = false;
             });
         }
 
+        // Listeners
         cells.forEach(cell => cell.addEventListener('click', handleCellClick));
         restartBtn.addEventListener('click', handleRestartGame);
+
     </script>
 </body>
 </html>
