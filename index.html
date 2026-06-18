@@ -175,29 +175,24 @@
 
     <script>
         /**
-         * TIC TAC TOE GAME LOGIC
+         * TIC TAC TOE GAME LOGIC WITH AUTO-SELECT BOT
          */
 
         // State Variables
-        let gameState = ["", "", "", "", "", "", "", "", ""]; // Tracks the board
-        let currentPlayer = "X"; // X starts first
-        let isGameActive = true; // Flag to stop clicks after win/draw
+        let gameState = ["", "", "", "", "", "", "", "", ""]; 
+        let currentPlayer = "X"; 
+        let isGameActive = true; 
 
         // DOM Elements
         const statusDisplay = document.getElementById('statusMessage');
         const cells = document.querySelectorAll('.cell');
         const restartBtn = document.getElementById('restartBtn');
 
-        // Winning Combinations (Indices)
+        // Winning Combinations
         const winningConditions = [
-            [0, 1, 2], // Top Row
-            [3, 4, 5], // Middle Row
-            [6, 7, 8], // Bottom Row
-            [0, 3, 6], // Left Column
-            [1, 4, 7], // Middle Column
-            [2, 5, 8], // Right Column
-            [0, 4, 8], // Diagonal Top-Left to Bottom-Right
-            [2, 4, 6]  // Diagonal Top-Right to Bottom-Left
+            [0, 1, 2], [3, 4, 5], [6, 7, 8], // Rows
+            [0, 3, 6], [1, 4, 7], [2, 5, 8], // Columns
+            [0, 4, 8], [2, 4, 6]             // Diagonals
         ];
 
         // Messages
@@ -205,49 +200,69 @@
         const drawMessage = () => `Game ended in a draw!`;
         const currentPlayerTurn = () => `Player <span class="current-player" style="color: ${currentPlayer === 'X' ? 'var(--x-color)' : 'var(--o-color)'}">${currentPlayer}</span>'s turn`;
 
-        // Initialize status
         statusDisplay.innerHTML = currentPlayerTurn();
 
-        /**
-         * Handles the click event on a cell
-         */
         function handleCellPlayed(clickedCell, clickedCellIndex) {
-            // Update internal state
             gameState[clickedCellIndex] = currentPlayer;
-            
-            // Update UI
             clickedCell.innerText = currentPlayer;
-            clickedCell.classList.add(currentPlayer.toLowerCase()); // Adds class 'x' or 'o'
+            clickedCell.classList.add(currentPlayer.toLowerCase());
         }
 
-        /**
-         * Changes the active player from X to O or vice versa
-         */
         function handlePlayerChange() {
             currentPlayer = currentPlayer === "X" ? "O" : "X";
             statusDisplay.innerHTML = currentPlayerTurn();
+
+            // 👉 IF IT IS PLAYER O's TURN, THE BOT PLAYS AUTOMATICALLY
+            if (currentPlayer === "O" && isGameActive) {
+                // Temporarily disable board while bot thinks slightly (looks realistic)
+                cells.forEach(cell => cell.disabled = true);
+                setTimeout(makeBotMove, 500); 
+            }
         }
 
         /**
-         * Checks the current board state against winning conditions
+         * 🤖 Auto-Select Bot Logic
          */
+        function makeBotMove() {
+            if (!isGameActive) return;
+
+            // 1. Find all available empty indexes
+            let availableCells = [];
+            gameState.forEach((cell, index) => {
+                if (cell === "") {
+                    availableCells.push(index);
+                }
+            });
+
+            // 2. If spots exist, pick a random index
+            if (availableCells.length > 0) {
+                const randomIndex = availableCells[Math.floor(Math.random() * availableCells.length)];
+                const targetCell = cells[randomIndex];
+
+                // 3. Play the Bot's move
+                handleCellPlayed(targetCell, randomIndex);
+                
+                // Re-enable remaining empty cells for the human player
+                cells.forEach((cell, idx) => {
+                    if (gameState[idx] === "") cell.disabled = false;
+                });
+
+                handleResultValidation();
+            }
+        }
+
         function handleResultValidation() {
             let roundWon = false;
             let winningLine = [];
 
-            // Iterate through all winning conditions
             for (let i = 0; i <= 7; i++) {
                 const winCondition = winningConditions[i];
                 let a = gameState[winCondition[0]];
                 let b = gameState[winCondition[1]];
                 let c = gameState[winCondition[2]];
 
-                // If any cell in the line is empty, this line isn't a win yet
-                if (a === '' || b === '' || c === '') {
-                    continue;
-                }
+                if (a === '' || b === '' || c === '') continue;
 
-                // If all three match
                 if (a === b && b === c) {
                     roundWon = true;
                     winningLine = winCondition;
@@ -262,7 +277,6 @@
                 return;
             }
 
-            // Check for draw (no empty strings left in state)
             let roundDraw = !gameState.includes("");
             if (roundDraw) {
                 statusDisplay.innerHTML = drawMessage();
@@ -270,30 +284,20 @@
                 return;
             }
 
-            // If game continues, switch player
             handlePlayerChange();
         }
 
-        /**
-         * Highlights the cells that caused the win
-         */
         function highlightWinningCells(indices) {
-            indices.forEach(index => {
-                cells[index].classList.add('win');
-            });
-            // Disable all cells interaction
+            indices.forEach(index => cells[index].classList.add('win'));
             cells.forEach(cell => cell.disabled = true);
         }
 
-        /**
-         * Main click handler
-         */
         function handleCellClick(clickedCellEvent) {
             const clickedCell = clickedCellEvent.target;
             const clickedCellIndex = parseInt(clickedCell.getAttribute('data-index'));
 
-            // Ignore click if cell is already filled or game is over
-            if (gameState[clickedCellIndex] !== "" || !isGameActive) {
+            // Prevent clicking if cell is full, game is over, or if it's the Bot's turn (O)
+            if (gameState[clickedCellIndex] !== "" || !isGameActive || currentPlayer === "O") {
                 return;
             }
 
@@ -301,17 +305,12 @@
             handleResultValidation();
         }
 
-        /**
-         * Resets the game to initial state
-         */
         function handleRestartGame() {
             isGameActive = true;
             currentPlayer = "X";
             gameState = ["", "", "", "", "", "", "", "", ""];
-            
             statusDisplay.innerHTML = currentPlayerTurn();
             
-            // Clear UI
             cells.forEach(cell => {
                 cell.innerText = "";
                 cell.classList.remove('x', 'o', 'win');
@@ -319,7 +318,6 @@
             });
         }
 
-        // Event Listeners
         cells.forEach(cell => cell.addEventListener('click', handleCellClick));
         restartBtn.addEventListener('click', handleRestartGame);
     </script>
